@@ -1,0 +1,130 @@
+Practical Machine Learning Class Project
+========================================
+## Executive Summary
+This documents presents work for a class poject in a coursera course with the subject title.  The intent of the following is to use the provided accelerometers data to correctly classify the human activity that was underway as the data was recorded.  In short this effort uses sample data for Human Activity Recognition Prediction as provided by  http://groupware.les.inf.puc-rio.br/har.
+
+The results below confirm that it is possible to utilize the provided accelerometer data to correctly classify a very high proportion of categorized human activity.
+
+## Analysis set-up
+We begin by loading R software packages that may be utilized for this analysis, setting the page width and dimensions for plots:
+```{r}
+library(knitr); library(caret); library(e1071); library(randomForest); library(ggplot2)
+options(width = 100)
+```
+The training and testing data for this analysis are available at:
+```{r}}
+trainingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+```
+The above data have been downloaded into a working directory as set below.  The two are read from a local file from this directory as below:
+```{r}
+setwd("C:/Users/Robert/Coursera/PracticalMachineLearning/MachineLearningProject")
+#download.file(trainingURL, training.csv, method = "curl")
+#download.file(testingURL, testing.csv, method = "curl")
+```
+```{r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+## The suitability of the provided data 
+An initial review of the data finds many variables that do not appear to be normally distributed.  Additionally, a high percentage of the provided variables have an excessive number of missing valuse (NA)s.
+
+Data from accelerometers from participants are recorded for five different activities.  The distribution of these activities classified A-D are below:
+```{r}
+table(training$classe)
+```
+In order to arrange the tables into a set with meaninful data that can help predict human activity, we first remove variables for the participant's name, ID and non-measurement variables (the first six) as follows:
+```{r}
+training <- training[, -c(1:6)]
+testing <- testing[, -c(1:6)]
+table(training$classe)
+```
+In oder to reduce the number of variables under consideation to improve processing speed, we can check for those wiht near zero variance, with a high percentage of missing values and posibly those that are highly correlated with orthers remaining.  If necessary, we will later try to remove variables that are excessively correlated with another member of the measurement variables.  However, it appears that a number of variables have very low variability and therefore are unable to provide a basis for the differentiation between the various classes of human activity underway.  We can use the *nearZeroVar* function from the *caret* package to remove these non-varring variables.
+```{r}
+nzv <- nearZeroVar(training)
+training <- training[,-nzv]
+testing <- testing[,-nzv]
+```
+Again, an inital viewing of the data finds numerious missing valuses or NAs.  We may have to impute values or exclude variable that have an excessive number of missing values.
+
+We can initially review the presence of NA by checking the sum total of NAs in each provided variable.  The table below highlights that many of the provided variables have ALL values misssing leaving with less measurement variables with significant reported data.
+```{r}
+table(colSums(is.na(training)))
+```
+We remove those measurement variables with all or an excessive proportion of NAs as follows:
+A vector of T/F values is created for those variables with more than *one fourth* of its valuses missing.
+```{r}
+MoreThanOneFourthNAs <- (colSums(is.na(training)) > (nrow(training)/4))
+training <- training[!MoreThanOneFourthNAs]
+testing <- testing[!MoreThanOneFourthNAs]
+```
+The number of variables now in training and testing data sets is `r ncol(training)`
+
+The initial assessment of models will not include preprocessing or the standarization of each varialble.
+
+## Creation of working data subsets.
+Two working data set are created from the provided training data as follows:
+```{r}
+splitvariable <- createDataPartition(y = training$classe, p = 0.70, list = FALSE)
+finaltraining <- training[splitvariable, ]
+finaltesting <- training[-splitvariable, ]
+```
+The above table indicates that we remain with a balanced set of activity classes to undertake this proposed analysis.
+
+## Model Selection
+The default rpart and random forest models are initially selected due to their versitility and reported accuracy.  The article highlighted http://www.r-bloggers.com/decision-making-trees-and-machine-learning-resources-for-r/ presents a useful discussion of alternative approaches. Both rpart and rt are suggested as optimal approaches.
+
+Default control parameters will be employed and modified as needed.
+
+A subsample of the prepared data will be selected for initial analysis.
+```{r}
+splitvariable <- createDataPartition(y = finaltraining$classe, p = 0.20, list = FALSE)
+sampletraining <- finaltraining[splitvariable, ]
+table(sampletraining$classe)
+```
+The results of this analysis employing the model below are promising so we continue with the full data subset of the provided initial *training* data set with the non-relevant variables removed.
+
+The first model selected was a random forest model with the default parameters and a smaller sample data set.  With promissing results, the full data set is used below with additional method parameters to obtain some *cross validation*:
+```{r}
+model_rf <- train(classe ~ ., data = finaltraining, method = "rf", prox = TRUE,
+                  trControl = trainControl(method = "cv", number = 5)) 
+```
+Due to very limited computer capacity and available time for this course, the sample of provided training data must suffice for this learning exercise.  It is important to note that the principal variables do not change when selecting new sample data values.
+
+## Sample Accuracy
+A confusionMatrix will be generated using the provided software in the *caret* package.
+```{r}
+resultsOnTraining <- predict(model_rf, newdata = finaltraining)
+confusionMatrix(resultsOnTraining, finaltraining$classe)
+```
+## Out of sample accuracy estimate
+The smaller subset of the training data created with 'createDataPartition' named finaltesting should produce an *out of sample error* a bit higher than that for the *finaltraining* data set.  Cross-validation was utilized to produce this important estimate of OUT OF SAMPLE ERROR as requested in the assignment.
+```{r}
+ResultsOnTestingData <- predict(model_rf, finaltesting)
+```
+With a *confusion matrix* as follows:
+```{r}
+confusionMatrix(ResultsOnTestingData, finaltesting$classe)
+```
+## Results 
+Using the rf package in the caret package we are generating results as follows:
+```{r}
+results <- predict(model_rf, testing)
+```
+The resulting predictions on the test data set is as follows:
+```{r}
+results
+```
+We save the results in a text file
+```{r}
+write.table(results, file="results.txt", quote=TRUE, sep=",", col.names=FALSE, row.names=FALSE)
+```
+
+## Summary
+
+The following list the variables names in order of importance for predicting the various human activities.
+```{r}
+varImp(model_rf) #to check for the important variables in the fit.
+```
+The provided data set is unnecessarily messy and way too long for a learning exercise.  Too much time was spend exploring the data rather than trying alternative statical learning or training methodologies.  Given the time, I would have liked to use some of the other presented methodologies.  It should be also noted that the data provided was appropriate for the problem but required significant computer time (and waiting time) which does not contribute to the learning objectives.
+
